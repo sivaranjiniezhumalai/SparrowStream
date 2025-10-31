@@ -3,7 +3,12 @@
 ![edit alt](https://github.com/sivaranjiniezhumalai/SparrowStream/blob/main/backend/Sparrowstream-architecture-image.png?raw=true)
 
 
-Hi guys !!!.........
+The above describes all about my system architecture design
+overview chart
+But still requires more configurations and detailed form... soon will be fixing it 
+
+What it all about ???
+yes, 
 I built a live video streaming platform using Node.js, FFmpeg, and Node-Media-Server.
 The system receives live input from OBS Studio, converts it to HLS format in real time, and serves it to viewers with low latency.
 It forms the backend core of an OTT-style app similar to Hotstar.
@@ -32,3 +37,4 @@ We can go live from OBS → stream is automatically encoded → anyone can view 
 http://localhost:8000/live/stream1/index.m3u8.
 
 still required to work on latency reducing part... currently latency is ( ~ 7 – 9s delay )
+
