@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Stream - Mini Hotstar</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        width: 100%;
+        background: white;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 30px;
+        color: white;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 2em;
+        margin-bottom: 10px;
+      }
+
+      .live-badge {
+        display: inline-block;
+        background: #ff4444;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+        }
+      }
+
+      .video-container {
+        position: relative;
+        background: black;
+        aspect-ratio: 16/9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      video {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .stream-ended {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: white;
+        z-index: 10;
+      }
+
+      .stream-ended h2 {
+        font-size: 2.5em;
+        margin-bottom: 20px;
+        animation: fadeIn 0.5s ease-in;
+      }
+
+      .stream-ended p {
+        font-size: 1.3em;
+        opacity: 0.9;
+        animation: fadeIn 0.5s ease-in 0.2s both;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .status {
+        padding: 20px 30px;
+        text-align: center;
+        font-size: 1.1em;
+      }
+
+      .status.loading {
+        color: #667eea;
+      }
+      .status.error {
+        color: #ff4444;
+      }
+      .status.success {
+        color: #44bb44;
+      }
+      .status.ended {
+        color: #ff4444;
+        font-weight: bold;
+      }
+
+      .controls {
+        padding: 20px 30px;
+        background: #f5f5f5;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      button {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1em;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-weight: bold;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🎬 Mini Hotstar - Live Stream</h1>
+        <span class="live-badge" id="liveBadge" style="display: none"
+          >🔴 LIVE</span
+        >
+      </div>
+
+      <div class="video-container">
+        <video id="video" controls autoplay muted></video>
+        <div class="stream-ended" id="streamEnded" style="display: none">
+          <h2>Stream Has Ended</h2>
+          <p>Thank you for joining! 🙏</p>
+        </div>
+      </div>
+
+      <div id="status" class="status loading">Checking for live stream...</div>
+
+      <div class="controls">
+        <button class="btn-primary" onclick="retryStream()">
+          🔄 Reload Stream
+        </button>
+      </div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const status = document.getElementById("status");
+      const liveBadge = document.getElementById("liveBadge");
+      const streamEnded = document.getElementById("streamEnded");
+      const streamUrl = "http://localhost:8001/live/stream1/index.m3u8";
+      let hls;
+      let statusCheckInterval;
+      let isStreamEnded = false;
+
+      function updateStatus(message, type = "loading") {
+        status.textContent = message;
+        status.className = `status ${type}`;
+        console.log(`[Status] ${message}`);
+      }
+
+      // Check stream status periodically
+      async function checkStreamStatus() {
+        try {
+          const response = await fetch(
+            "http://localhost:8001/api/stream-status?stream=stream1",
+            {
+              cache: "no-store",
+            }
+          );
+          const data = await response.json();
+
+          console.log("Stream status:", data);
+
+          if (!data.isLive && !isStreamEnded) {
+            // Stream has ended
+            console.log("Stream ended detected!");
+            isStreamEnded = true;
+            handleStreamEnd();
+          }
+        } catch (error) {
+          console.error("Status check error:", error);
+        }
+      }
+
+      function handleStreamEnd() {
+        console.log("Handling stream end...");
+
+        // Stop HLS player
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+
+        // Stop status checking
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          statusCheckInterval = null;
+        }
+
+        // Update UI
+        video.style.display = "none";
+        streamEnded.style.display = "flex";
+        liveBadge.style.display = "none";
+        updateStatus("Stream has ended - Thank you for watching!", "ended");
+      }
+
+      function loadStream() {
+        console.log("Loading stream...");
+
+        // Reset state
+        isStreamEnded = false;
+        video.style.display = "block";
+        streamEnded.style.display = "none";
+
+        if (Hls.isSupported()) {
+          hls = new Hls({
+            debug: false,
+            enableWorker: true,
+            lowLatencyMode: true,
+            backBufferLength: 90,
+            maxBufferLength: 10,
+            maxMaxBufferLength: 20,
+            maxBufferSize: 10 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            liveSyncDurationCount: 2,
+            liveMaxLatencyDurationCount: 4,
+            manifestLoadingTimeOut: 10000,
+            manifestLoadingMaxRetry: 3,
+            levelLoadingTimeOut: 10000,
+            levelLoadingMaxRetry: 3,
+          });
+
+          hls.loadSource(streamUrl);
+          hls.attachMedia(video);
+
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            console.log("Manifest parsed - stream is live!");
+            updateStatus("✅ Connected! Playing live stream...", "success");
+            liveBadge.style.display = "inline-block";
+
+            video.play().catch((err) => {
+              console.log("Autoplay prevented:", err);
+              updateStatus("Click play to start", "loading");
+            });
+
+            // Start checking stream status every 2 seconds
+            if (statusCheckInterval) clearInterval(statusCheckInterval);
+            statusCheckInterval = setInterval(checkStreamStatus, 2000);
+          });
+
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            console.error("HLS Error:", data.type, data.details);
+
+            if (data.fatal) {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  console.log("Network error - checking if stream ended...");
+
+                  // Check if stream actually ended
+                  checkStreamStatus().then(() => {
+                    if (!isStreamEnded) {
+                      updateStatus("⚠️ Network error - retrying...", "error");
+                      setTimeout(() => {
+                        if (hls && !isStreamEnded) {
+                          hls.startLoad();
+                        }
+                      }, 2000);
+                    }
+                  });
+                  break;
+
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  console.log("Media error - attempting recovery...");
+                  if (hls && !isStreamEnded) {
+                    hls.recoverMediaError();
+                  }
+                  break;
+
+                default:
+                  console.log("Fatal error:", data.details);
+                  if (!isStreamEnded) {
+                    updateStatus("❌ Stream error", "error");
+                    liveBadge.style.display = "none";
+                    if (hls) hls.destroy();
+                    setTimeout(retryStream, 5000);
+                  }
+                  break;
+              }
+            }
+          });
+
+          video.addEventListener("playing", () => {
+            updateStatus("🎉 Live stream is playing!", "success");
+          });
+
+          video.addEventListener("waiting", () => {
+            if (!isStreamEnded) {
+              updateStatus("⏳ Buffering...", "loading");
+            }
+          });
+
+          video.addEventListener("ended", () => {
+            console.log("Video ended event");
+            handleStreamEnd();
+          });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          console.log("Using native HLS support");
+          video.src = streamUrl;
+
+          video.addEventListener("loadedmetadata", () => {
+            updateStatus("✅ Stream loaded!", "success");
+            liveBadge.style.display = "inline-block";
+
+            if (statusCheckInterval) clearInterval(statusCheckInterval);
+            statusCheckInterval = setInterval(checkStreamStatus, 2000);
+          });
+
+          video.addEventListener("ended", handleStreamEnd);
+        } else {
+          updateStatus("❌ Browser does not support HLS streaming", "error");
+        }
+      }
+
+      async function retryStream() {
+        console.log("Retrying stream...");
+
+        // Clean up
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          statusCheckInterval = null;
+        }
+
+        isStreamEnded = false;
+        liveBadge.style.display = "none";
+        streamEnded.style.display = "none";
+        video.style.display = "block";
+        updateStatus("🔄 Connecting...", "loading");
+
+        try {
+          // Check if stream is actually available
+          const statusResponse = await fetch(
+            "http://localhost:8001/api/stream-status?stream=stream1",
+            {
+              cache: "no-store",
+            }
+          );
+          const statusData = await statusResponse.json();
+
+          console.log("Retry - Stream status:", statusData);
+
+          if (statusData.isLive) {
+            // Stream is live, try to load it
+            const fileCheck = await fetch(streamUrl, { cache: "no-store" });
+            if (fileCheck.ok) {
+              loadStream();
+            } else {
+              throw new Error("Stream file not ready");
+            }
+          } else {
+            updateStatus("⏰ Waiting for stream to start...", "loading");
+            setTimeout(retryStream, 5000);
+          }
+        } catch (error) {
+          console.error("Retry error:", error);
+          updateStatus("⏰ Waiting for stream...", "loading");
+          setTimeout(retryStream, 5000);
+        }
+      }
+
+      // Initialize on page load
+      console.log("Page loaded - initializing...");
+      retryStream();
+    </script>
+  </body>
+</html>
